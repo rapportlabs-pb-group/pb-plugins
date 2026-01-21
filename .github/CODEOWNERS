@@ -1,0 +1,12 @@
+# PB Plugins Marketplace - Code Owners
+# 모든 PR은 최소 1명의 코드 오너 승인 필요
+
+# 마켓플레이스 설정 파일 - 관리자만 승인 가능
+/.claude-plugin/marketplace.json @rapportlabs-pb-group/marketplace-admins
+
+# 전체 플러그인 폴더 - 팀 멤버 승인
+/plugins/ @rapportlabs-pb-group/plugin-reviewers
+
+# 개별 플러그인은 해당 작성자가 오너
+# (플러그인 추가 시 아래에 추가)
+# /plugins/my-plugin/ @username

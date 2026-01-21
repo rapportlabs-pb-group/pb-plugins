@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "라포랩스 Pb 그룹 Claude Code 플러그인 마켓플레이스",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
@@ -17,7 +17,9 @@
       "author": {
         "name": "PB Group"
       },
-      "keywords": ["example", "template"]
+      "keywords": ["example", "template"],
+      "dependencies": [],
+      "requirements": {}
     }
   ]
 }
