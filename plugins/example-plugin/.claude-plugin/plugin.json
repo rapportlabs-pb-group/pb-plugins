@@ -1,0 +1,9 @@
+{
+  "name": "example-plugin",
+  "version": "1.0.0",
+  "description": "PB 그룹 예제 플러그인 - 새 플러그인 만들 때 참고하세요",
+  "author": {
+    "name": "PB Group"
+  },
+  "commands": ["./commands/"]
+}

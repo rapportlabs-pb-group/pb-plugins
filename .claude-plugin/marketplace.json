@@ -1,0 +1,23 @@
+{
+  "name": "pb-plugins",
+  "owner": {
+    "name": "Rapport Labs PB Group",
+    "email": "pb@rapportlabs.com"
+  },
+  "metadata": {
+    "description": "라포랩스 Pb 그룹 Claude Code 플러그인 마켓플레이스",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "example-plugin",
+      "source": "./plugins/example-plugin",
+      "description": "예제 플러그인 - 새 플러그인 만들 때 참고하세요",
+      "version": "1.0.0",
+      "author": {
+        "name": "PB Group"
+      },
+      "keywords": ["example", "template"]
+    }
+  ]
+}
