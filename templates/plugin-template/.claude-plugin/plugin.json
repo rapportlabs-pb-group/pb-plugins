@@ -1,0 +1,13 @@
+{
+  "name": "{{PLUGIN_NAME}}",
+  "version": "1.0.0",
+  "description": "{{DESCRIPTION}}",
+  "author": {
+    "name": "{{AUTHOR_NAME}}",
+    "email": "{{AUTHOR_EMAIL}}"
+  },
+  "commands": ["./commands/"],
+  "keywords": [],
+  "dependencies": [],
+  "requirements": {}
+}
