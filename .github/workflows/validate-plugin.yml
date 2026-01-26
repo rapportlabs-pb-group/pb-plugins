@@ -1,0 +1,44 @@
+name: Validate Plugin
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/**'
+      - '.claude-plugin/marketplace.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate marketplace.json
+        run: |
+          node scripts/validate-marketplace.js
+
+      - name: Validate plugin structure
+        run: |
+          node scripts/validate-plugins.js
+
+      - name: Check for required files
+        run: |
+          for plugin in plugins/*/; do
+            plugin_name=$(basename "$plugin")
+
+            if [ ! -f "${plugin}.claude-plugin/plugin.json" ]; then
+              echo "❌ Missing plugin.json in $plugin_name"
+              exit 1
+            fi
+
+            if [ ! -d "${plugin}commands" ]; then
+              echo "❌ Missing commands/ directory in $plugin_name"
+              exit 1
+            fi
+
+            echo "✅ $plugin_name structure valid"
+          done
