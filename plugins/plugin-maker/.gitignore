@@ -1,0 +1,26 @@
+# Secrets and credentials
+.env*
+credentials/
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+service-account*.json
+
+# Development files
+CLAUDE.md
+__pycache__/
+*.pyc
+node_modules/
+
+# Plugin state
+.plugin-state/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

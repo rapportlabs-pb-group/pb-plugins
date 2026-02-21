@@ -17,9 +17,26 @@
       "author": {
         "name": "PB Group"
       },
-      "keywords": ["example", "template"],
+      "keywords": [
+        "example",
+        "template"
+      ],
       "dependencies": [],
       "requirements": {}
+    },
+    {
+      "name": "plugin-maker",
+      "source": "./plugins/plugin-maker",
+      "description": "Create, secure, and publish Claude Code plugins to PB marketplace",
+      "version": "2.3.0",
+      "author": {
+        "name": "younghoonjung"
+      },
+      "keywords": [
+        "workflow",
+        "automation",
+        "productivity"
+      ]
     }
   ]
 }

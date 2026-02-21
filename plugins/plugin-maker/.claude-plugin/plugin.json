@@ -1,0 +1,11 @@
+{
+  "name": "plugin-maker",
+  "version": "2.3.0",
+  "description": "Create, secure, and publish Claude Code plugins to PB marketplace",
+  "author": {
+    "name": "younghoonjung"
+  },
+  "keywords": ["workflow", "automation", "productivity"],
+  "skills": ["./skills/"],
+  "agents": []
+}
