@@ -26,7 +26,7 @@
       "name": "plugin-maker",
       "source": "./plugins/plugin-maker",
       "description": "Create, secure, and publish Claude Code plugins to PB marketplace",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "author": {
         "name": "younghoonjung"
       },
@@ -34,7 +34,9 @@
         "workflow",
         "automation",
         "productivity"
-      ]
+      ],
+      "published_by": "younghoon-maker",
+      "published_at": "2026-02-21"
     }
   ]
 }

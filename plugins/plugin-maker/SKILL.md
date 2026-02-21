@@ -1,6 +1,6 @@
 ---
 name: plugin-maker
-version: 2.4.0
+version: 2.5.0
 description: "Use when creating Claude Code plugins for PB marketplace (rapportlabs-pb-group/pb-plugins), scanning for secrets, or publishing. Triggers: 'create plugin', 'make a plugin', 'publish plugin', 'check secrets', 'PB plugin', 'plugin 생성', '플러그인 만들어줘', 'PB 마켓플레이스'"
 ---
 
