@@ -82,6 +82,7 @@ my-plugin/
 | 플러그인 | 설명 | 버전 |
 |---------|------|-----|
 | example-plugin | 예제 플러그인 | 1.0.0 |
+| plugin-maker | Create, secure, and publish Claude Code plugins to PB marketplace | 2.3.0 |
 
 ## 문의
 
