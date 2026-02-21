@@ -1,0 +1,14 @@
+{
+  "timeZone": "Asia/Seoul",
+  "dependencies": {
+    "libraries": [
+      {
+        "userSymbol": "KakaoAuto",
+        "version": "19",
+        "libraryId": "1WtV19dz3dkazbK7ZoimyqRWC-wuG0aY_pxk9FzXXmr9dTwjYGJQ_YcAN"
+      }
+    ]
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}
