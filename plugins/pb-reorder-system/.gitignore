@@ -1,0 +1,33 @@
+# Credentials & Secrets
+credentials/
+*.env
+
+# Cache files
+.users_cache.json
+.channels_cache_v2.json
+
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+
+# Node
+node_modules/
+
+# Clasp (contains script IDs)
+.clasp.json
+
+# Claude Code dev config (must not be in plugin)
+CLAUDE.md
+AGENTS.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Keys
+*.key
+*.pem

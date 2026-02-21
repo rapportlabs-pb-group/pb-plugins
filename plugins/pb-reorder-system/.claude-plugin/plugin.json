@@ -1,0 +1,12 @@
+{
+  "name": "pb-reorder-system",
+  "version": "1.0.0",
+  "description": "Monte Carlo simulation-based demand forecasting and auto reorder system for 6 brands",
+  "author": {
+    "name": "rapportlabs-pb-group"
+  },
+  "repository": "https://github.com/rapportlabs-pb-group/pb-reorder-system",
+  "keywords": ["reorder", "demand-forecasting", "monte-carlo", "bigquery", "apps-script", "automation"],
+  "skills": "./skills/",
+  "commands": ["./.claude/commands/"]
+}
