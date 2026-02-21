@@ -250,6 +250,45 @@ def update_marketplace_json(repo_path: Path, plugin_data: dict) -> None:
     mp_path.write_text(json.dumps(mp_data, indent=2, ensure_ascii=False) + "\n")
 
 
+def update_readme_plugin_table(repo_path: Path) -> None:
+    """Update the plugin list table in the marketplace README.md from marketplace.json."""
+    readme_path = repo_path / "README.md"
+    mp_path = repo_path / MARKETPLACE_JSON_PATH
+
+    if not readme_path.exists() or not mp_path.exists():
+        print("  Skipped: README.md or marketplace.json not found")
+        return
+
+    mp_data = json.loads(mp_path.read_text())
+    plugins = mp_data.get("plugins", [])
+    if not plugins:
+        return
+
+    # Build new table
+    header = "| 플러그인 | 설명 | 버전 |\n|---------|------|-----|"
+    rows = []
+    for p in plugins:
+        name = p.get("name", "")
+        desc = p.get("description", "")
+        ver = p.get("version", "")
+        rows.append(f"| {name} | {desc} | {ver} |")
+    new_table = header + "\n" + "\n".join(rows)
+
+    readme = readme_path.read_text()
+
+    # Find and replace the existing table after "## 플러그인 목록"
+    import re
+    pattern = r"(## 플러그인 목록\s*\n)(\|.+\|[\s\S]*?)(\n##|\n\Z|\Z)"
+    match = re.search(pattern, readme)
+    if match:
+        replacement = match.group(1) + "\n" + new_table + "\n" + (match.group(3) if match.group(3).startswith("\n##") else match.group(3))
+        readme = readme[:match.start()] + replacement + readme[match.end():]
+        readme_path.write_text(readme)
+        print(f"  README.md plugin table updated ({len(plugins)} plugins)")
+    else:
+        print("  Skipped: Could not find '## 플러그인 목록' section in README.md")
+
+
 def ensure_changelog(plugin_path: Path, plugin_name: str, version: str, description: str) -> None:
     """Create or update CHANGELOG.md in the plugin directory."""
     changelog_path = plugin_path / "CHANGELOG.md"
@@ -404,6 +443,10 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
         # 7. Register in marketplace.json
         print("\n=== Step 7: Update marketplace.json ===")
         update_marketplace_json(repo_path, plugin_data)
+
+        # 7.5. Update README plugin table
+        print("\n=== Step 7.5: Update README Plugin Table ===")
+        update_readme_plugin_table(repo_path)
 
         # 8. Run validation
         print("\n=== Step 8: Validate ===")
