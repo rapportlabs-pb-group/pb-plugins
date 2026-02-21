@@ -60,6 +60,12 @@ def check_prerequisites() -> list[str]:
     return errors
 
 
+def get_github_username() -> str:
+    """Get the authenticated GitHub username."""
+    result = run(["gh", "api", "/user", "--jq", ".login"], check=False)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def run_secrets_check(plugin_path: Path) -> bool:
     """Run secrets scanner. Returns True if passed."""
     print("\n--- Secrets Scan (HARD GATE) ---")
@@ -113,6 +119,14 @@ def validate_plugin_structure(plugin_path: Path) -> tuple[bool, dict]:
 
     if not data.get("description"):
         print("Error: 'description' field missing in plugin.json")
+        return False, {}
+
+    # Check author (REQUIRED for PB marketplace)
+    author = data.get("author", {})
+    author_name = author.get("name", "") if isinstance(author, dict) else ""
+    if not author_name:
+        print("Error: 'author.name' field missing in plugin.json (required for PB marketplace)")
+        print("  Add: \"author\": {\"name\": \"your-name\"}")
         return False, {}
 
     # Check README.md exists
@@ -214,7 +228,7 @@ def copy_plugin(plugin_path: Path, repo_path: Path, plugin_name: str) -> None:
     print(f"Plugin copied to {PLUGINS_DIR}/{plugin_name}/")
 
 
-def update_marketplace_json(repo_path: Path, plugin_data: dict) -> None:
+def update_marketplace_json(repo_path: Path, plugin_data: dict, github_username: str = "") -> None:
     """Add or update plugin entry in marketplace.json."""
     mp_path = repo_path / MARKETPLACE_JSON_PATH
     name = plugin_data["name"]
@@ -231,6 +245,7 @@ def update_marketplace_json(repo_path: Path, plugin_data: dict) -> None:
             existing_idx = i
             break
 
+    from datetime import date
     entry = {
         "name": name,
         "source": f"./plugins/{name}",
@@ -238,14 +253,16 @@ def update_marketplace_json(repo_path: Path, plugin_data: dict) -> None:
         "version": plugin_data.get("version", "1.0.0"),
         "author": plugin_data.get("author", {"name": "Unknown"}),
         "keywords": plugin_data.get("keywords", []),
+        "published_by": github_username,
+        "published_at": date.today().isoformat(),
     }
 
     if existing_idx is not None:
         mp_data["plugins"][existing_idx] = entry
-        print(f"Updated existing entry for '{name}'")
+        print(f"Updated existing entry for '{name}' (by @{github_username})")
     else:
         mp_data.setdefault("plugins", []).append(entry)
-        print(f"Added new entry for '{name}'")
+        print(f"Added new entry for '{name}' (by @{github_username})")
 
     mp_path.write_text(json.dumps(mp_data, indent=2, ensure_ascii=False) + "\n")
 
@@ -264,14 +281,19 @@ def update_readme_plugin_table(repo_path: Path) -> None:
     if not plugins:
         return
 
-    # Build new table
-    header = "| 플러그인 | 설명 | 버전 |\n|---------|------|-----|"
+    # Build new table with author column
+    header = "| 플러그인 | 설명 | 버전 | 작성자 | 배포자 | 배포일 |\n|---------|------|-----|--------|--------|--------|"
     rows = []
     for p in plugins:
         name = p.get("name", "")
         desc = p.get("description", "")
         ver = p.get("version", "")
-        rows.append(f"| {name} | {desc} | {ver} |")
+        author = p.get("author", {})
+        author_name = author.get("name", "") if isinstance(author, dict) else str(author)
+        published_by = p.get("published_by", "")
+        published_at = p.get("published_at", "")
+        gh_link = f"@{published_by}" if published_by else ""
+        rows.append(f"| {name} | {desc} | {ver} | {author_name} | {gh_link} | {published_at} |")
     new_table = header + "\n" + "\n".join(rows)
 
     readme = readme_path.read_text()
@@ -314,7 +336,7 @@ def ensure_changelog(plugin_path: Path, plugin_name: str, version: str, descript
     print(f"CHANGELOG.md updated with v{version}")
 
 
-def create_pr(repo_path: Path, plugin_name: str, version: str, description: str, is_update: bool, marketplace_repo: str) -> str:
+def create_pr(repo_path: Path, plugin_name: str, version: str, description: str, is_update: bool, marketplace_repo: str, author_name: str = "", github_username: str = "") -> str:
     """Create branch, commit, push, and open PR. Returns PR URL."""
     prefix = "update" if is_update else "add"
     branch = f"{prefix}/{plugin_name}-v{version}"
@@ -332,12 +354,22 @@ def create_pr(repo_path: Path, plugin_name: str, version: str, description: str,
     run(["git", "-C", str(repo_path), "add", "."])
 
     action = "Update" if is_update else "Add"
-    commit_msg = f"{action} {plugin_name} v{version}\n\n{description}"
+    commit_msg = f"{action} {plugin_name} v{version}\n\nAuthor: {author_name} (@{github_username})\n{description}"
     run(["git", "-C", str(repo_path), "commit", "-m", commit_msg])
     run(["git", "-C", str(repo_path), "push", "-u", "origin", branch])
 
     pr_title = f"{action} {plugin_name} v{version}"
-    pr_body = f"## Summary\n- {action}: **{plugin_name}**\n- Version: {version}\n- {description}\n\n## Test plan\n- [ ] `node scripts/validate-plugins.js` passes\n- [ ] `node scripts/validate-marketplace.js` passes\n- [ ] Local test with `claude --plugin-dir`"
+    pr_body = (
+        f"## Summary\n"
+        f"- {action}: **{plugin_name}**\n"
+        f"- Version: {version}\n"
+        f"- Author: **{author_name}** (@{github_username})\n"
+        f"- {description}\n\n"
+        f"## Test plan\n"
+        f"- [ ] `node scripts/validate-plugins.js` passes\n"
+        f"- [ ] `node scripts/validate-marketplace.js` passes\n"
+        f"- [ ] Local test with `claude --plugin-dir`"
+    )
 
     result = run(
         ["gh", "pr", "create",
@@ -389,7 +421,16 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
         return False
 
     plugin_name = plugin_data["name"]
+    author_name = plugin_data.get("author", {}).get("name", "Unknown")
     print(f"  Plugin: {plugin_name}")
+    print(f"  Author: {author_name}")
+
+    # Resolve GitHub username (REQUIRED for author tracking)
+    github_username = get_github_username()
+    if not github_username:
+        print("Error: Could not detect GitHub username. Run: gh auth login")
+        return False
+    print(f"  Publisher: @{github_username}")
 
     # Version bump if requested
     if version_bump:
@@ -442,7 +483,7 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
 
         # 7. Register in marketplace.json
         print("\n=== Step 7: Update marketplace.json ===")
-        update_marketplace_json(repo_path, plugin_data)
+        update_marketplace_json(repo_path, plugin_data, github_username)
 
         # 7.5. Update README plugin table
         print("\n=== Step 7.5: Update README Plugin Table ===")
@@ -459,7 +500,7 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
 
         # 9. Create PR
         print("\n=== Step 9: Create PR ===")
-        pr_url = create_pr(repo_path, plugin_name, version, description, is_update, marketplace_repo)
+        pr_url = create_pr(repo_path, plugin_name, version, description, is_update, marketplace_repo, author_name, github_username)
 
         if pr_url:
             print(f"\nDone! PR created: {pr_url}")

@@ -1,6 +1,6 @@
 {
   "name": "plugin-maker",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Create, secure, and publish Claude Code plugins to PB marketplace",
   "author": {
     "name": "younghoonjung"
