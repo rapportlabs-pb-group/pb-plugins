@@ -8,9 +8,15 @@ Usage:
     python3 publish_to_pb.py <plugin-path>
     python3 publish_to_pb.py ./my-plugin --dry-run
     python3 publish_to_pb.py ./my-plugin --version-bump patch
+    python3 publish_to_pb.py ./my-plugin --no-stage  # skip staging (old behavior)
 
-Flow:
-    prerequisites -> secrets gate -> validate -> clone -> copy -> register -> validate -> PR
+Flow (v2.6.0 staging mode - default):
+    prerequisites -> staging copy -> secrets scan on staging -> auto-sanitize staging ->
+    validate -> clone marketplace -> copy from staging -> register -> validate -> PR
+    (source files are NEVER modified)
+
+Flow (--no-stage, legacy):
+    prerequisites -> secrets gate on source -> validate -> clone -> copy -> register -> validate -> PR
 """
 
 from __future__ import annotations
@@ -38,6 +44,38 @@ RSYNC_EXCLUDES = [
 
 SECRETS_SCRIPT = Path(__file__).parent / "check_secrets.py"
 
+# Sanitization replacements: regex pattern -> environment variable placeholder
+SANITIZE_REPLACEMENTS = [
+    # Slack tokens
+    (r'xoxb-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{20,}', '${SLACK_BOT_TOKEN}'),
+    (r'xoxp-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{20,}', '${SLACK_USER_TOKEN}'),
+    (r'xoxa-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{20,}', '${SLACK_APP_TOKEN}'),
+    (r'xoxs-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{20,}', '${SLACK_SESSION_TOKEN}'),
+    (r'https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[a-zA-Z0-9]+', '${SLACK_WEBHOOK_URL}'),
+    # Discord
+    (r'[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27}', '${DISCORD_BOT_TOKEN}'),
+    (r'https://discord(app)?\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+', '${DISCORD_WEBHOOK_URL}'),
+    # AWS
+    (r'AKIA[0-9A-Z]{16}', '${AWS_ACCESS_KEY_ID}'),
+    # Generic key/token/secret/password values (quoted)
+    (r'(["\']?api[_-]?key["\']?\s*[:=]\s*["\'])[a-zA-Z0-9_\-]{20,}(["\'])', r'\1${API_KEY}\2'),
+    (r'(["\']?token["\']?\s*[:=]\s*["\'])[a-zA-Z0-9_\-]{20,}(["\'])', r'\1${TOKEN}\2'),
+    (r'(["\']?access[_-]?token["\']?\s*[:=]\s*["\'])[a-zA-Z0-9_\-]{20,}(["\'])', r'\1${ACCESS_TOKEN}\2'),
+    (r'(["\']?secret["\']?\s*[:=]\s*["\'])[a-zA-Z0-9_\-]{16,}(["\'])', r'\1${SECRET}\2'),
+    (r'(["\']?password["\']?\s*[:=]\s*["\'])[^"\']{8,}(["\'])', r'\1${PASSWORD}\2'),
+    # Database URLs with credentials
+    (r'((?:mysql|postgresql|mongodb|redis)://[^"\'\s]+:)[^"\'\s]+(@)', r'\1${DB_PASSWORD}\2'),
+    # Webhook URLs (Microsoft)
+    (r'https://[a-z]+\.webhook\.office\.com/[^\s"\']+', '${MS_WEBHOOK_URL}'),
+]
+
+# Hardcoded user path sanitization
+USER_PATH_SANITIZE = [
+    (r'/Users/[a-zA-Z0-9_.-]+/', '${HOME}/'),
+    (r'/home/[a-zA-Z0-9_.-]+/', '${HOME}/'),
+    (r'C:\\Users\\[a-zA-Z0-9_.-]+\\', '${HOME}\\'),
+]
+
 
 def run(cmd: list[str], capture: bool = True, check: bool = True, cwd: Path | str | None = None) -> subprocess.CompletedProcess:
     """Run a shell command."""
@@ -64,6 +102,93 @@ def get_github_username() -> str:
     """Get the authenticated GitHub username."""
     result = run(["gh", "api", "/user", "--jq", ".login"], check=False)
     return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def create_staging_copy(plugin_path: Path) -> Path:
+    """Create a staging copy of the plugin in a temp directory.
+
+    Returns the path to the staging copy. Source files remain untouched.
+    """
+    staging_dir = Path(tempfile.mkdtemp(prefix="plugin-stage-"))
+    staging_plugin = staging_dir / plugin_path.name
+
+    rsync_cmd = ["rsync", "-a"]
+    for pattern in RSYNC_EXCLUDES:
+        rsync_cmd.extend(["--exclude", pattern])
+    rsync_cmd.extend([str(plugin_path) + "/", str(staging_plugin) + "/"])
+
+    run(rsync_cmd)
+    return staging_plugin
+
+
+def sanitize_secrets_in_staging(staging_path: Path) -> list[dict]:
+    """Auto-replace detected secrets with env var placeholders in staging copy.
+
+    Returns list of sanitization actions taken.
+    """
+    import re as _re
+
+    code_exts = {'.py', '.js', '.ts', '.json', '.yml', '.yaml', '.sh', '.md',
+                 '.txt', '.cfg', '.ini', '.toml', '.env', '.gs', '.jsx', '.tsx'}
+    exclude_dirs = {'__pycache__', '.git', 'node_modules', '.venv', 'venv', '.plugin-state'}
+    actions = []
+
+    for file_path in staging_path.rglob("*"):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix not in code_exts:
+            continue
+        if any(part in exclude_dirs for part in file_path.parts):
+            continue
+
+        try:
+            content = file_path.read_text(encoding='utf-8', errors='ignore')
+            original = content
+
+            # Apply secret replacements
+            for pattern, replacement in SANITIZE_REPLACEMENTS:
+                matches = list(_re.finditer(pattern, content, _re.IGNORECASE))
+                if matches:
+                    content = _re.sub(pattern, replacement, content, flags=_re.IGNORECASE)
+                    for m in matches:
+                        actions.append({
+                            "file": str(file_path.relative_to(staging_path)),
+                            "type": "secret",
+                            "original": m.group()[:40] + ("..." if len(m.group()) > 40 else ""),
+                            "replacement": replacement if len(replacement) < 50 else replacement[:47] + "...",
+                        })
+
+            # Apply user path sanitization
+            for pattern, replacement in USER_PATH_SANITIZE:
+                matches = list(_re.finditer(pattern, content))
+                if matches:
+                    content = _re.sub(pattern, replacement, content)
+                    for m in matches:
+                        actions.append({
+                            "file": str(file_path.relative_to(staging_path)),
+                            "type": "path",
+                            "original": m.group()[:40] + ("..." if len(m.group()) > 40 else ""),
+                            "replacement": replacement,
+                        })
+
+            # Remove sensitive files that shouldn't be distributed
+            if file_path.name.startswith('.env') or file_path.name == 'CLAUDE.md':
+                file_path.unlink()
+                actions.append({
+                    "file": str(file_path.relative_to(staging_path)),
+                    "type": "removed",
+                    "original": file_path.name,
+                    "replacement": "(deleted)",
+                })
+                continue
+
+            if content != original:
+                file_path.write_text(content, encoding='utf-8')
+
+        except Exception:
+            pass
+
+    return actions
 
 
 def run_secrets_check(plugin_path: Path) -> bool:
@@ -391,8 +516,14 @@ def create_pr(repo_path: Path, plugin_name: str, version: str, description: str,
         return ""
 
 
-def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None = None, marketplace_repo: str = DEFAULT_MARKETPLACE_REPO) -> bool:
-    """Main publish flow."""
+def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None = None, marketplace_repo: str = DEFAULT_MARKETPLACE_REPO, use_staging: bool = True) -> bool:
+    """Main publish flow.
+
+    Args:
+        use_staging: If True (default), copies source to staging dir first.
+            Secrets are auto-sanitized on the staging copy.
+            Source files are NEVER modified.
+    """
     plugin_path = plugin_path.resolve()
     marketplace_name = marketplace_repo.split("/")[-1]
 
@@ -406,16 +537,8 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
             return False
         print("  (dry-run: continuing despite errors)")
 
-    # 2. Secrets gate (HARD GATE)
-    print("\n=== Step 2: Secrets Gate ===")
-    if not dry_run:
-        if not run_secrets_check(plugin_path):
-            return False
-    else:
-        print("  (dry-run: skipping secrets scan)")
-
-    # 3. Validate structure
-    print("\n=== Step 3: Validate Plugin Structure ===")
+    # 2. Validate structure (on SOURCE - structure must be valid regardless)
+    print("\n=== Step 2: Validate Plugin Structure ===")
     valid, plugin_data = validate_plugin_structure(plugin_path)
     if not valid:
         return False
@@ -432,7 +555,7 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
         return False
     print(f"  Publisher: @{github_username}")
 
-    # Version bump if requested
+    # Version bump if requested (applied to SOURCE - this is intentional)
     if version_bump:
         plugin_data["version"] = bump_version(plugin_path, version_bump)
 
@@ -440,8 +563,78 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
     description = plugin_data.get("description", "")
     print(f"  Version: {version}")
 
-    # 3.5. Update CHANGELOG
+    # 2.5. Update CHANGELOG (on SOURCE - this is intentional)
     ensure_changelog(plugin_path, plugin_name, version, description)
+
+    # 3. Staging + Secrets (the key difference)
+    staging_path = None
+    staging_temp = None
+    publish_source = plugin_path  # what we copy to marketplace
+
+    if use_staging:
+        print("\n=== Step 3: Create Staging Copy ===")
+        print(f"  Source: {plugin_path}")
+        staging_path = create_staging_copy(plugin_path)
+        staging_temp = staging_path.parent
+        print(f"  Staging: {staging_path}")
+        print("  Source files will NOT be modified.")
+
+        # 3.5. Scan staging for secrets
+        print("\n=== Step 3.5: Secrets Scan (on staging) ===")
+        if not dry_run:
+            scan_result = run(
+                [sys.executable, str(SECRETS_SCRIPT), str(staging_path), "--json"],
+                check=False,
+            )
+            try:
+                scan_data = json.loads(scan_result.stdout)
+            except (json.JSONDecodeError, ValueError):
+                scan_data = {"passed": scan_result.returncode == 0}
+
+            if not scan_data.get("passed", True):
+                secrets_count = len(scan_data.get("hardcoded_secrets", []))
+                paths_count = len(scan_data.get("hardcoded_paths", []))
+                files_count = len(scan_data.get("sensitive_files", []))
+                print(f"  Found: {secrets_count} secrets, {paths_count} paths, {files_count} sensitive files")
+
+                # Auto-sanitize the staging copy
+                print("\n=== Step 3.6: Auto-Sanitize Staging ===")
+                actions = sanitize_secrets_in_staging(staging_path)
+                if actions:
+                    print(f"  Sanitized {len(actions)} items:")
+                    for a in actions[:10]:
+                        print(f"    [{a['type']}] {a['file']}: {a['original']} -> {a['replacement']}")
+                    if len(actions) > 10:
+                        print(f"    ... and {len(actions) - 10} more")
+
+                # Re-scan after sanitization
+                print("\n=== Step 3.7: Re-scan After Sanitization ===")
+                rescan = run(
+                    [sys.executable, str(SECRETS_SCRIPT), str(staging_path)],
+                    check=False,
+                )
+                print(rescan.stdout)
+                if rescan.returncode != 0:
+                    print("BLOCKED: Secrets still detected after auto-sanitization.")
+                    print("Fix remaining issues manually in source and re-run.")
+                    if staging_temp:
+                        shutil.rmtree(staging_temp, ignore_errors=True)
+                    return False
+                print("  Staging copy is clean after sanitization.")
+            else:
+                print("  No secrets detected. Staging copy is clean.")
+        else:
+            print("  (dry-run: skipping secrets scan)")
+
+        publish_source = staging_path
+    else:
+        # Legacy mode: scan source directly (HARD GATE)
+        print("\n=== Step 3: Secrets Gate (legacy mode) ===")
+        if not dry_run:
+            if not run_secrets_check(plugin_path):
+                return False
+        else:
+            print("  (dry-run: skipping secrets scan)")
 
     # 4. Detect access level
     print("\n=== Step 4: Detect Access Level ===")
@@ -455,15 +648,21 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
     if dry_run:
         print("\n=== DRY RUN SUMMARY ===")
         print(f"  Plugin: {plugin_name} v{version}")
+        print(f"  Mode: {'staging (source untouched)' if use_staging else 'legacy (source scanned directly)'}")
         print(f"  Target: {marketplace_repo}/{PLUGINS_DIR}/{plugin_name}/")
         print(f"  Access: {access}")
         print("  Actions that would be taken:")
-        print(f"    1. Clone {marketplace_repo}")
-        print(f"    2. Copy {plugin_path} -> {PLUGINS_DIR}/{plugin_name}/")
-        print(f"    3. Update {MARKETPLACE_JSON_PATH}")
-        print("    4. Run validation scripts")
-        print(f"    5. Create PR: 'Add {plugin_name} v{version}'")
+        if use_staging:
+            print(f"    1. Create staging copy of {plugin_path}")
+            print("    2. Scan staging for secrets, auto-sanitize if needed")
+        print(f"    3. Clone {marketplace_repo}")
+        print(f"    4. Copy {'staging' if use_staging else str(plugin_path)} -> {PLUGINS_DIR}/{plugin_name}/")
+        print(f"    5. Update {MARKETPLACE_JSON_PATH}")
+        print("    6. Run validation scripts")
+        print(f"    7. Create PR: 'Add {plugin_name} v{version}'")
         print("\n  No changes were made.")
+        if staging_temp:
+            shutil.rmtree(staging_temp, ignore_errors=True)
         return True
 
     # 5. Clone repo
@@ -477,9 +676,11 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
         if is_update:
             print(f"  Plugin '{plugin_name}' already exists - treating as update")
 
-        # 6. Copy plugin
+        # 6. Copy plugin (from staging if available, otherwise source)
         print("\n=== Step 6: Copy Plugin ===")
-        copy_plugin(plugin_path, repo_path, plugin_name)
+        copy_plugin(publish_source, repo_path, plugin_name)
+        if use_staging:
+            print("  (copied from sanitized staging copy)")
 
         # 7. Register in marketplace.json
         print("\n=== Step 7: Update marketplace.json ===")
@@ -504,6 +705,8 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
 
         if pr_url:
             print(f"\nDone! PR created: {pr_url}")
+            if use_staging:
+                print("\nSource files were NOT modified. No restoration needed.")
             print(f"\nAfter merge, install with:")
             print(f"  /plugin marketplace add {marketplace_repo}")
             print(f"  /plugin install {plugin_name}@{marketplace_name}")
@@ -515,6 +718,8 @@ def publish(plugin_path: Path, dry_run: bool = False, version_bump: str | None =
     finally:
         # Cleanup
         shutil.rmtree(temp_dir, ignore_errors=True)
+        if staging_temp:
+            shutil.rmtree(staging_temp, ignore_errors=True)
 
 
 def main():
@@ -540,6 +745,11 @@ def main():
         default=DEFAULT_MARKETPLACE_REPO,
         help=f"Marketplace repo (default: {DEFAULT_MARKETPLACE_REPO})",
     )
+    parser.add_argument(
+        "--no-stage",
+        action="store_true",
+        help="Skip staging mode (legacy: scan source directly, may require manual restoration)",
+    )
 
     args = parser.parse_args()
     plugin_path = Path(args.plugin_path)
@@ -552,7 +762,7 @@ def main():
         print(f"Error: Not a directory: {plugin_path}", file=sys.stderr)
         sys.exit(1)
 
-    success = publish(plugin_path, args.dry_run, args.version_bump, args.repo)
+    success = publish(plugin_path, args.dry_run, args.version_bump, args.repo, use_staging=not args.no_stage)
     sys.exit(0 if success else 1)
 
 
