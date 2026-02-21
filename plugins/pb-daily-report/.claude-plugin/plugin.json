@@ -1,0 +1,42 @@
+{
+  "name": "pb-daily-report",
+  "version": "7.5.1",
+  "description": "Automated PB (Private Brand) daily intelligence briefing system. BigQuery + Gemini CLI + Claude Code pipeline that generates daily performance reports and distributes via Notion and Slack.",
+  "author": {
+    "name": "Rapport Labs PB Group"
+  },
+  "keywords": [
+    "bigquery",
+    "gemini",
+    "notion",
+    "slack",
+    "daily-report",
+    "e-commerce",
+    "private-brand",
+    "automation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rapportlabs-pb-group/pb-plugins"
+  },
+  "skills": {
+    "pb-run-all": "Execute complete daily report workflow (3 steps)",
+    "pb-report-generate": "BigQuery + Gemini report generation",
+    "pb-notion-create": "Create Notion page with report content",
+    "pb-slack-send": "Send Slack briefing and thread messages",
+    "pb-validate": "Validate system status and connections"
+  },
+  "agents": {
+    "pb-data-transformer": "MCP JSON to Notion Markdown transformer",
+    "pb-workflow-validator": "Workflow output validation"
+  },
+  "prerequisites": {
+    "python": "3.10+",
+    "tools": [
+      "gcloud CLI (auth configured)",
+      "Gemini CLI (GEMINI_API_KEY)",
+      "Claude Code CLI"
+    ]
+  }
+}

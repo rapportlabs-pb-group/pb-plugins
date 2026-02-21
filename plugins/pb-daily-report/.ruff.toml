@@ -1,0 +1,36 @@
+# Ruff configuration for PB Daily Report
+# https://docs.astral.sh/ruff/configuration/
+
+[lint]
+# Enable pycodestyle (E), pyflakes (F), isort (I)
+select = ["E", "F", "I", "W"]
+
+# Ignore specific rules
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "E402",  # Module level import not at top of file
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[lint.per-file-ignores]
+# Tests can have longer lines and unused imports
+"tests/*" = ["E501", "F401"]
+# Scripts may have different import order
+"scripts/*" = ["E402"]
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Target Python 3.11
+target-version = "py311"
+
+[lint.isort]
+# Sort imports
+known-first-party = ["converters", "scripts"]

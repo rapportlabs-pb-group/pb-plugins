@@ -37,6 +37,25 @@
       ],
       "published_by": "younghoon-maker",
       "published_at": "2026-02-21"
+    },
+    {
+      "name": "pb-daily-report",
+      "source": "./plugins/pb-daily-report",
+      "description": "Automated PB (Private Brand) daily intelligence briefing system. BigQuery + Gemini CLI + Claude Code pipeline that generates daily performance reports and distributes via Notion and Slack.",
+      "version": "7.5.1",
+      "author": {
+        "name": "Rapport Labs PB Group"
+      },
+      "keywords": [
+        "bigquery",
+        "gemini",
+        "notion",
+        "slack",
+        "daily-report",
+        "e-commerce",
+        "private-brand",
+        "automation"
+      ]
     }
   ]
 }
