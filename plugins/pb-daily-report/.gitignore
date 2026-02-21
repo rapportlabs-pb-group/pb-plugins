@@ -1,0 +1,42 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# API Keys and Secrets
+*.key
+*.pem
+credentials.json
+
+# Cache files
+.channels_cache.json
+.users_cache.json
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Logs
+logs/
+*.log
+
+# Output and temp files
+.pb-reports/
+.stamps/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MCP raw data (contains sensitive business data)
+mcp-raw-*.json
+validation-*.json
+notion-content-*.md
+
+# Archived files
+_archived/

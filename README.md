@@ -82,10 +82,12 @@ my-plugin/
 
 
 
-| 플러그인 | 설명 | 버전 | 작성자 | 배포자 | 배포일 |
-|---------|------|-----|--------|--------|--------|
-| example-plugin | 예제 플러그인 - 새 플러그인 만들 때 참고하세요 | 1.0.0 | PB Group |  |  |
-| plugin-maker | Create, secure, and publish Claude Code plugins to PB marketplace | 2.6.0 | younghoonjung | @younghoon-maker | 2026-02-21 |
+
+| 플러그인 | 설명 | 버전 |
+|---------|------|-----|
+| example-plugin | 예제 플러그인 - 새 플러그인 만들 때 참고하세요 | 1.0.0 |
+| plugin-maker | Create, secure, and publish Claude Code plugins to PB marketplace | 2.6.0 |
+| pb-daily-report | Automated PB (Private Brand) daily intelligence briefing system. BigQuery + Gemini CLI + Claude Code pipeline that generates daily performance reports and distributes via Notion and Slack. | 7.5.1 |
 
 ## 문의
 
